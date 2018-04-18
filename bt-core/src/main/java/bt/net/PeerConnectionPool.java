@@ -16,12 +16,8 @@
 
 package bt.net;
 
-import bt.CountingThreadFactory;
-import bt.event.EventSink;
-import bt.metainfo.TorrentId;
-import bt.runtime.Config;
-import bt.service.IRuntimeLifecycleBinder;
 import com.google.inject.Inject;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -38,8 +34,14 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 
+import bt.CountingThreadFactory;
+import bt.event.EventSink;
+import bt.metainfo.TorrentId;
+import bt.runtime.Config;
+import bt.service.IRuntimeLifecycleBinder;
+
 /**
- *<p><b>Note that this class implements a service.
+ * <p><b>Note that this class implements a service.
  * Hence, is not a part of the public API and is a subject to change.</b></p>
  */
 public class PeerConnectionPool implements IPeerConnectionPool {
@@ -104,8 +106,13 @@ public class PeerConnectionPool implements IPeerConnectionPool {
 
         if (!addConnection(newConnection)) {
             // check if it was already added simultaneously by another connection worker
-            PeerConnection existingConnection = connections.get(peer, torrentId)
-                    .orElseThrow(() -> new RuntimeException("Failed to add new connection for peer: " + peer));
+            PeerConnection existingConnection = null;
+            try {
+                existingConnection = connections.get(peer, torrentId)
+                        .orElseThrow(() -> new RuntimeException("Failed to add new connection for peer: " + peer));
+            } catch (Throwable throwable) {
+                throw (RuntimeException) throwable;
+            }
             if (existingConnection == null) {
                 throw new RuntimeException("Failed to add new connection for peer: " + newConnection.getRemotePeer());
             }
@@ -147,6 +154,29 @@ public class PeerConnectionPool implements IPeerConnectionPool {
         return added;
     }
 
+    private void purgeConnection(PeerConnection connection) {
+        connections.remove(connection);
+        connection.closeQuietly();
+        eventSink.firePeerDisconnected(connection.getTorrentId(), connection.getRemotePeer());
+    }
+
+    private void shutdown() {
+        shutdownCleaner();
+        connections.visitConnections(PeerConnection::closeQuietly);
+    }
+
+    private void shutdownCleaner() {
+        cleaner.shutdown();
+        try {
+            cleaner.awaitTermination(1, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            LOGGER.warn("Interrupted while waiting for the cleaner's shutdown");
+        }
+        if (!cleaner.isShutdown()) {
+            cleaner.shutdownNow();
+        }
+    }
+
     private class Cleaner implements Runnable {
         @Override
         public void run() {
@@ -174,29 +204,6 @@ public class PeerConnectionPool implements IPeerConnectionPool {
             } finally {
                 cleanerLock.unlock();
             }
-        }
-    }
-
-    private void purgeConnection(PeerConnection connection) {
-        connections.remove(connection);
-        connection.closeQuietly();
-        eventSink.firePeerDisconnected(connection.getTorrentId(), connection.getRemotePeer());
-    }
-
-    private void shutdown() {
-        shutdownCleaner();
-        connections.visitConnections(PeerConnection::closeQuietly);
-    }
-
-    private void shutdownCleaner() {
-        cleaner.shutdown();
-        try {
-            cleaner.awaitTermination(1, TimeUnit.SECONDS);
-        } catch (InterruptedException e) {
-            LOGGER.warn("Interrupted while waiting for the cleaner's shutdown");
-        }
-        if (!cleaner.isShutdown()) {
-            cleaner.shutdownNow();
         }
     }
 }

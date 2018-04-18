@@ -1,0 +1,6 @@
+description = 'Bt BEncoding'
+dependencies {
+    implementation 'org.yaml:snakeyaml:1.17'
+    testImplementation 'junit:junit:4.12'
+    testImplementation 'org.mockito:mockito-all:1.10.19'
+}

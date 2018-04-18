@@ -16,6 +16,10 @@
 
 package bt.processor.magnet;
 
+import java.time.Instant;
+import java.util.List;
+import java.util.Optional;
+
 import bt.metainfo.IMetadataService;
 import bt.metainfo.Torrent;
 import bt.metainfo.TorrentFile;
@@ -24,8 +28,8 @@ import bt.metainfo.TorrentSource;
 import bt.net.InetPeer;
 import bt.peer.IPeerRegistry;
 import bt.processor.ProcessingStage;
-import bt.processor.listener.ProcessingEvent;
 import bt.processor.TerminateOnErrorProcessingStage;
+import bt.processor.listener.ProcessingEvent;
 import bt.runtime.Config;
 import bt.torrent.TorrentDescriptor;
 import bt.torrent.TorrentRegistry;
@@ -33,10 +37,6 @@ import bt.torrent.messaging.BitfieldCollectingConsumer;
 import bt.torrent.messaging.MetadataConsumer;
 import bt.tracker.AnnounceKey;
 import bt.tracker.ITrackerService;
-
-import java.time.Instant;
-import java.util.List;
-import java.util.Optional;
 
 public class FetchMetadataStage extends TerminateOnErrorProcessingStage<MagnetContext> {
 
@@ -94,8 +94,12 @@ public class FetchMetadataStage extends TerminateOnErrorProcessingStage<MagnetCo
     }
 
     private TorrentDescriptor getDescriptor(TorrentId torrentId) {
-        return torrentRegistry.getDescriptor(torrentId)
-                .orElseThrow(() -> new IllegalStateException("No descriptor present for torrent ID: " + torrentId));
+        try {
+            return torrentRegistry.getDescriptor(torrentId)
+                    .orElseThrow(() -> new IllegalStateException("No descriptor present for torrent ID: " + torrentId));
+        } catch (Throwable throwable) {
+            throw (IllegalStateException)throwable;
+        }
     }
 
     private Torrent amendTorrent(Torrent delegate, Optional<String> displayName) {

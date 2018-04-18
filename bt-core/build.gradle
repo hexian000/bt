@@ -1,0 +1,7 @@
+description = 'Bt Core'
+dependencies {
+    implementation project(':bt-bencoding')
+    implementation group: 'org.slf4j', name: 'slf4j-api', version: '1.7.21'
+    implementation group: 'com.google.inject', name: 'guice', version: '4.1.0'
+    implementation group: 'com.google.inject.extensions', name: 'guice-multibindings', version: '4.1.0'
+}

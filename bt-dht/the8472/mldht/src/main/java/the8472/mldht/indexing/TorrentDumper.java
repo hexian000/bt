@@ -130,8 +130,13 @@ public class TorrentDumper implements Component {
 		}
 
 		static FetchStats fromBencoded(Map<String, Object> map) {
-			Key k = typedGet(map, "k", byte[].class).map(Key::new).orElseThrow(() -> new IllegalArgumentException("missing key in serialized form"));
-			
+			Key k = null;
+			try {
+				k = typedGet(map, "k", byte[].class).map(Key::new).orElseThrow(() -> new IllegalArgumentException("missing key in serialized form"));
+			} catch (Throwable e) {
+				throw (IllegalArgumentException) e;
+			}
+
 			return new FetchStats(k, fs -> {
 				fs.recentSources = typedGet(map, "sources", List.class).map((List l) -> {
 					List<Map<String, Object>> typedList = l;

@@ -1,0 +1,7 @@
+
+description = 'mldht - Bittorrent Mainline DHT library'
+
+dependencies {
+    implementation group: 'net.i2p.crypto', name: 'eddsa', version: '0.2.0'
+    testImplementation group: 'junit', name: 'junit', version: '4.12'
+}

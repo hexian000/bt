@@ -47,8 +47,12 @@ public class SeedStage<C extends TorrentContext> extends TerminateOnErrorProcess
     }
 
     private TorrentDescriptor getDescriptor(TorrentId torrentId) {
-        return torrentRegistry.getDescriptor(torrentId)
-                .orElseThrow(() -> new IllegalStateException("No descriptor present for torrent ID: " + torrentId));
+        try {
+            return torrentRegistry.getDescriptor(torrentId)
+                    .orElseThrow(() -> new IllegalStateException("No descriptor present for torrent ID: " + torrentId));
+        } catch (Throwable throwable) {
+            throw (IllegalStateException)throwable;
+        }
     }
 
     @Override

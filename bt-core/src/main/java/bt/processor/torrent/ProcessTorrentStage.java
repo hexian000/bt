@@ -16,6 +16,11 @@
 
 package bt.processor.torrent;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.util.Optional;
+
 import bt.metainfo.Torrent;
 import bt.metainfo.TorrentId;
 import bt.processor.ProcessingStage;
@@ -26,10 +31,6 @@ import bt.torrent.TorrentRegistry;
 import bt.torrent.TrackerAnnouncer;
 import bt.tracker.AnnounceKey;
 import bt.tracker.ITrackerService;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.util.Optional;
 
 public class ProcessTorrentStage<C extends TorrentContext> extends TerminateOnErrorProcessingStage<C> {
     private static final Logger LOGGER = LoggerFactory.getLogger(ProcessTorrentStage.class);
@@ -98,8 +99,12 @@ public class ProcessTorrentStage<C extends TorrentContext> extends TerminateOnEr
     }
 
     private TorrentDescriptor getDescriptor(TorrentId torrentId) {
-        return torrentRegistry.getDescriptor(torrentId)
-                .orElseThrow(() -> new IllegalStateException("No descriptor present for torrent ID: " + torrentId));
+        try {
+            return torrentRegistry.getDescriptor(torrentId)
+                    .orElseThrow(() -> new IllegalStateException("No descriptor present for torrent ID: " + torrentId));
+        } catch (Throwable throwable) {
+            throw (IllegalStateException)throwable;
+        }
     }
 
     @Override

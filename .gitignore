@@ -5,3 +5,8 @@ target
 .idea
 *.iml
 dependency-reduced-pom.xml
+.gradle
+/local.properties
+/.idea/workspace.xml
+/.idea/libraries
+build

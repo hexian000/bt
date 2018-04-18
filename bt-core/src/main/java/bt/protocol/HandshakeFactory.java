@@ -16,14 +16,15 @@
 
 package bt.protocol;
 
-import bt.BtException;
-import bt.metainfo.TorrentId;
-import bt.peer.IPeerRegistry;
 import com.google.inject.Inject;
 import com.google.inject.Provider;
 
+import bt.BtException;
+import bt.metainfo.TorrentId;
+import bt.peer.IPeerRegistry;
+
 /**
- *<p><b>Note that this class implements a service.
+ * <p><b>Note that this class implements a service.
  * Hence, is not a part of the public API and is a subject to change.</b></p>
  */
 public class HandshakeFactory implements IHandshakeFactory {
@@ -44,6 +45,8 @@ public class HandshakeFactory implements IHandshakeFactory {
                     peerRegistry.get().getLocalPeer().getPeerId().orElseThrow(() -> new BtException("Local peer is missing ID")));
         } catch (InvalidMessageException e) {
             throw new BtException("Failed to create handshake", e);
+        } catch (Throwable e) {
+            throw (BtException) e;
         }
     }
 }

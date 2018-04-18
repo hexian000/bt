@@ -1,0 +1,9 @@
+rootProject.name = 'bt'
+include ':bt-bencoding'
+include ':bt-core'
+include ':bt-http-tracker-client'
+include ':libmldht'
+include ':bt-dht'
+
+project(':libmldht').projectDir = "$rootDir/bt-dht/the8472/mldht" as File
+project(':bt-dht').projectDir = "$rootDir/bt-dht/bt-dht" as File

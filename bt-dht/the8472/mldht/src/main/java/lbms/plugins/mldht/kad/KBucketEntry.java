@@ -5,12 +5,6 @@
  ******************************************************************************/
 package lbms.plugins.mldht.kad;
 
-import static the8472.bencode.Utils.prettyPrint;
-import static the8472.utils.Functional.typedGet;
-
-import lbms.plugins.mldht.kad.utils.AddressUtils;
-import lbms.plugins.mldht.utils.ExponentialWeightendMovingAverage;
-
 import java.lang.reflect.InvocationTargetException;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
@@ -22,6 +16,12 @@ import java.util.Optional;
 import java.util.TreeMap;
 import java.util.zip.Checksum;
 
+import lbms.plugins.mldht.kad.utils.AddressUtils;
+import lbms.plugins.mldht.utils.ExponentialWeightendMovingAverage;
+
+import static the8472.bencode.Utils.prettyPrint;
+import static the8472.utils.Functional.typedGet;
+
 /**
  * Entry in a KBucket, it basically contains an ip_address of a node,
  * the udp port of the node and a node_id.
@@ -29,25 +29,25 @@ import java.util.zip.Checksum;
  * @author Damokles
  */
 public class KBucketEntry {
-	
+
 	private static final double RTT_EMA_WEIGHT = 0.3;
-	
-	
+
+
 	public static final Class<? extends Checksum> crc32c;
-	
+
 	static {
 		Class<? extends Checksum> clazz = null;
-		
+
 		try {
 			clazz = (Class<? extends Checksum>) Class.forName("java.util.zip.CRC32C");
 		} catch (ClassNotFoundException e) {
 			// not java 9, do nothing
 		}
-		
+
 		crc32c = clazz;
 	}
-	
-	
+
+
 	/**
 	 * ascending order for last seen, i.e. the last value will be the least recently seen one
 	 */
@@ -63,25 +63,25 @@ public class KBucketEntry {
 	 */
 	public static final Comparator<KBucketEntry> KEY_ORDER = Comparator.comparing(KBucketEntry::getID);
 
-	
+
 	public static final class DistanceOrder implements Comparator<KBucketEntry> {
-		
+
 		final Key target;
 		public DistanceOrder(Key target) {
 			this.target = target;
 		}
-	
+
 		public int compare(KBucketEntry o1, KBucketEntry o2) {
 			return target.threeWayDistance(o1.getID(), o2.getID());
 		}
 	}
-	
+
 
 	private final InetSocketAddress	addr;
 	private final Key				nodeID;
 	private long				lastSeen;
 	private boolean verified = false;
-	
+
 	/**
 	 *   -1 = never queried / learned about it from incoming requests
 	 *    0 = last query was a success
@@ -93,28 +93,34 @@ public class KBucketEntry {
 	private ExponentialWeightendMovingAverage avgRTT = new ExponentialWeightendMovingAverage().setWeight(RTT_EMA_WEIGHT);;
 	private long lastSendTime = -1;
 
-	
+
 	public static KBucketEntry fromBencoded(Map<String, Object> serialized) {
-		
-		InetSocketAddress addr = typedGet(serialized, "addr", byte[].class).map(AddressUtils::unpackAddress).orElseThrow(() -> new IllegalArgumentException("address missing"));
-		Key id = typedGet(serialized, "id", byte[].class).filter(b -> b.length == Key.SHA1_HASH_LENGTH).map(Key::new).orElseThrow(() -> new IllegalArgumentException("key missing"));
-		
+
+        InetSocketAddress addr = null;
+        Key id = null;
+        try {
+            addr = typedGet(serialized, "addr", byte[].class).map(AddressUtils::unpackAddress).orElseThrow(() -> new IllegalArgumentException("address missing"));
+            id = typedGet(serialized, "id", byte[].class).filter(b -> b.length == Key.SHA1_HASH_LENGTH).map(Key::new).orElseThrow(() -> new IllegalArgumentException("key missing"));
+		} catch (Throwable e) {
+			throw (IllegalArgumentException) e;
+        }
+
 		KBucketEntry built = new KBucketEntry(addr, id);
-		
+
 		typedGet(serialized, "version", byte[].class).ifPresent(built::setVersion);
 		typedGet(serialized, "created", Long.class).ifPresent(l -> built.timeCreated = l);
 		typedGet(serialized, "lastSeen", Long.class).ifPresent(l -> built.lastSeen = l);
 		typedGet(serialized, "lastSend", Long.class).ifPresent(l -> built.lastSendTime = l);
 		typedGet(serialized, "failedCount", Long.class).ifPresent(l -> built.failedQueries = l.intValue());
 		typedGet(serialized, "verified", Long.class).ifPresent(l -> built.setVerified(l == 1));
-		
-		
+
+
 		return built;
 	}
-	
+
 	public Map<String, Object> toBencoded() {
 		Map<String, Object> map = new TreeMap<>();
-		
+
 		map.put("addr", AddressUtils.packAddress(addr));
 		map.put("id", nodeID.getHash());
 		map.put("created", timeCreated);
@@ -125,7 +131,7 @@ public class KBucketEntry {
 			map.put("version", version);
 		if(verifiedReachable())
 			map.put("verified", 1);
-		
+
 		return map;
 	}
 
@@ -178,7 +184,7 @@ public class KBucketEntry {
 	public InetSocketAddress getAddress () {
 		return addr;
 	}
-	
+
 	@Override
 	public boolean equals(Object o)
 	{
@@ -192,7 +198,7 @@ public class KBucketEntry {
 			return false;
 		return nodeID.equals(other.nodeID) && addr.equals(other.addr);
 	}
-	
+
 	public boolean matchIPorID(KBucketEntry other) {
 		if(other == null)
 			return false;
@@ -210,7 +216,7 @@ public class KBucketEntry {
 	public Key getID () {
 		return nodeID;
 	}
-	
+
 	/**
      * @param version the version to set
      */
@@ -242,7 +248,7 @@ public class KBucketEntry {
 	public int getFailedQueries () {
 		return failedQueries;
 	}
-	
+
 	@Override
 	public String toString() {
 		long now = System.currentTimeMillis();
@@ -261,7 +267,7 @@ public class KBucketEntry {
 			b.append(";rtt:"+rtt);
 		if(version != null)
 			b.append(";ver:"+prettyPrint(version));
-			
+
 		return b.toString();
 	}
 
@@ -270,18 +276,18 @@ public class KBucketEntry {
 
 	// 5 timeouts, used for exponential backoff as per kademlia paper
 	public static final int MAX_TIMEOUTS = 5;
-	
+
 	// haven't seen it for a long time + timeout == evict sooner than pure timeout based threshold. e.g. for old entries that we haven't touched for a long time
 	public static final int OLD_AND_STALE_TIME = 15*60*1000;
 	public static final int PING_BACKOFF_BASE_INTERVAL = 60*1000;
 	public static final int OLD_AND_STALE_TIMEOUTS = 2;
-	
+
 	public boolean eligibleForNodesList() {
 		// 1 timeout can occasionally happen. should be fine to hand it out as long as we've verified it at least once
 		return verifiedReachable() && failedQueries < 2;
 	}
-	
-	
+
+
 	public boolean eligibleForLocalLookup() {
 		// allow implicit initial ping during lookups
 		// TODO: make this work now that we don't keep unverified entries in the main bucket
@@ -289,51 +295,51 @@ public class KBucketEntry {
 			return false;
 		return true;
 	}
-	
+
 	public boolean verifiedReachable() {
 		return verified;
 	}
-	
+
 	public boolean neverContacted() {
 		return lastSendTime == -1;
 	}
-	
+
 	public int failedQueries() {
 		return Math.abs(failedQueries);
 	}
-	
+
 	public long lastSendTime() {
 		return lastSendTime;
 	}
-	
+
 	private boolean withinBackoffWindow(long now) {
 		int backoff = PING_BACKOFF_BASE_INTERVAL << Math.min(MAX_TIMEOUTS, Math.max(0, failedQueries() - 1));
-		
+
 		return failedQueries != 0 && now - lastSendTime < backoff;
 	}
-	
+
 	public long backoffWindowEnd() {
 		if(failedQueries == 0 || lastSendTime <= 0)
 			return -1L;
-		
+
 		int backoff = PING_BACKOFF_BASE_INTERVAL << Math.min(MAX_TIMEOUTS, Math.max(0, failedQueries() - 1));
-		
+
 		return lastSendTime + backoff;
 	}
-	
+
 	public boolean withinBackoffWindow() {
 		return withinBackoffWindow(System.currentTimeMillis());
 	}
-	
+
 	public boolean needsPing() {
 		long now = System.currentTimeMillis();
-		
+
 		// don't ping if recently seen to allow NAT entries to time out
 		// see https://arxiv.org/pdf/1605.05606v1.pdf for numbers
 		// and do exponential backoff after failures to reduce traffic
 		if(now - lastSeen < 30*1000 || withinBackoffWindow(now))
 			return false;
-		
+
 		return failedQueries != 0 || now - lastSeen > OLD_AND_STALE_TIME;
 	}
 
@@ -341,16 +347,16 @@ public class KBucketEntry {
 	private boolean oldAndStale() {
 		return failedQueries > OLD_AND_STALE_TIMEOUTS && System.currentTimeMillis() - lastSeen > OLD_AND_STALE_TIME;
 	}
-	
+
 	public boolean removableWithoutReplacement() {
 		// some non-reachable nodes may contact us repeatedly, bumping the last seen counter. they might be interesting to keep around so we can keep track of the backoff interval to not waste pings on them
 		// but things we haven't heard from in a while can be discarded
-		
+
 		boolean seenSinceLastPing = lastSeen > lastSendTime;
-		
+
 		return failedQueries > MAX_TIMEOUTS && !seenSinceLastPing ;
 	}
-	
+
 	public boolean needsReplacement() {
 		return (failedQueries > 1 && !verifiedReachable()) || failedQueries > MAX_TIMEOUTS || oldAndStale();
 	}
@@ -366,13 +372,13 @@ public class KBucketEntry {
 		if(!Double.isNaN(other.avgRTT.getAverage()) )
 			avgRTT.updateAverage(other.avgRTT.getAverage());
 	}
-	
+
 	public int getRTT() {
 		return (int) avgRTT.getAverage(DHTConstants.RPC_CALL_TIMEOUT_MAX);
 	}
 
 	/**
-	 * 
+	 *
 	 * @param rtt > 0 in ms. -1 if unknown
 	 */
 	public void signalResponse(long rtt) {
@@ -382,11 +388,11 @@ public class KBucketEntry {
 		if(rtt > 0)
 			avgRTT.updateAverage(rtt);
 	}
-	
+
 	public void mergeRequestTime(long requestSent) {
 		lastSendTime = Math.max(lastSendTime, requestSent);
 	}
-	
+
 	public void signalScheduledRequest() {
 		lastSendTime = System.currentTimeMillis();
 	}
@@ -398,36 +404,36 @@ public class KBucketEntry {
 	public void signalRequestTimeout () {
 		failedQueries++;
 	}
-	
-	
+
+
 	byte[] v4_mask = { 0x03, 0x0f, 0x3f, (byte) 0xff };
 	byte[] v6_mask = { 0x01, 0x03, 0x07, 0x0f, 0x1f, 0x3f, 0x7f, (byte) 0xff };
-	
+
 	public boolean hasSecureID() {
 		if(crc32c == null)
 			return false;
 		try {
 			Checksum c = crc32c.getConstructor().newInstance();
-			
+
 			byte[] ip = getAddress().getAddress().getAddress();
-			
+
 			byte[] mask = ip.length == 4 ? v4_mask : v6_mask;
-			
+
 			for(int i=0;i<mask.length;i++) {
 				ip[i] &= mask[i];
 			}
-			
+
 			int r = nodeID.getByte(19) & 0x7;
-			
+
 			ip[0] |= r << 5;
-			
+
 			c.reset();
 			c.update(ip, 0, ip.length);
 			int crc = (int) c.getValue();
-			
+
 			return ((nodeID.getInt(0) ^ crc) & 0xff_ff_f8_00) == 0;
-			 
-			
+
+
 			/*
 			uint8_t* ip; // our external IPv4 or IPv6 address (network byte order)
 			int num_octets; // the number of octets to consider in ip (4 or 8)
@@ -453,16 +459,16 @@ public class KBucketEntry {
 			for (int i = 3; i < 19; ++i) node_id[i] = std::rand();
 			node_id[19] = rand;
 			*/
-			
+
 		} catch (InstantiationException | IllegalAccessException | IllegalArgumentException | InvocationTargetException | NoSuchMethodException | SecurityException e) {
 			e.printStackTrace();
 			return false;
 		}
 	}
-	
-	
+
+
 	void setVerified(boolean ver) {
 		verified = ver;
-		
+
 	}
 }

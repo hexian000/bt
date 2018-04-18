@@ -5,15 +5,17 @@
  ******************************************************************************/
 package lbms.plugins.mldht.kad.messages;
 
-import static the8472.bencode.Utils.prettyPrint;
-import static the8472.utils.Functional.castOrThrow;
-import static the8472.utils.Functional.tap;
-import static the8472.utils.Functional.tapThrow;
-import static the8472.utils.Functional.typedGet;
-
-import the8472.bencode.PathMatcher;
-import the8472.bencode.Tokenizer;
-import the8472.utils.Functional;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.function.Function;
+import java.util.stream.Stream;
 
 import lbms.plugins.mldht.kad.BloomFilterBEP33;
 import lbms.plugins.mldht.kad.DBItem;
@@ -28,18 +30,15 @@ import lbms.plugins.mldht.kad.messages.ErrorMessage.ErrorCode;
 import lbms.plugins.mldht.kad.messages.MessageBase.Method;
 import lbms.plugins.mldht.kad.messages.MessageBase.Type;
 import lbms.plugins.mldht.kad.utils.AddressUtils;
+import the8472.bencode.PathMatcher;
+import the8472.bencode.Tokenizer;
+import the8472.utils.Functional;
 
-import java.io.IOException;
-import java.net.InetSocketAddress;
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
-import java.util.function.Function;
-import java.util.stream.Stream;
+import static the8472.bencode.Utils.prettyPrint;
+import static the8472.utils.Functional.castOrThrow;
+import static the8472.utils.Functional.tap;
+import static the8472.utils.Functional.tapThrow;
+import static the8472.utils.Functional.typedGet;
 
 /**
  * @author Damokles
@@ -165,9 +164,14 @@ public class MessageDecoder {
 			throw new MessageException("response did not contain a body",ErrorCode.ProtocolError);
 		}
 
-		byte[] hash = Optional.ofNullable(args.get("id"))
-				.map(castOrThrow(byte[].class, (o) -> new MessageException("expected parameter 'id' to be a byte-string, got "+o.getClass().getSimpleName(), ErrorCode.ProtocolError)))
-				.orElseThrow(() -> new MessageException("mandatory parameter 'id' missing", ErrorCode.ProtocolError));
+		byte[] hash = new byte[0];
+		try {
+			hash = Optional.ofNullable(args.get("id"))
+                    .map(castOrThrow(byte[].class, (o) -> new MessageException("expected parameter 'id' to be a byte-string, got "+o.getClass().getSimpleName(), ErrorCode.ProtocolError)))
+                    .orElseThrow(() -> new MessageException("mandatory parameter 'id' missing", ErrorCode.ProtocolError));
+		} catch (Throwable throwable) {
+			throw (MessageException) throwable;
+		}
 		byte[] ip = (byte[]) map.get(MessageBase.EXTERNAL_IP_KEY);
 
 		if (hash.length != Key.SHA1_HASH_LENGTH) {
@@ -324,14 +328,25 @@ public class MessageDecoder {
 	 */
 	private MessageBase parseRequest (Map<String, Object> map,  Function<byte[], Optional<Method>> transactionIdMapper, DHTtype type) throws MessageException {
 		Object rawRequestMethod = map.get(Type.REQ_MSG.getRPCTypeName());
-		Map<String, Object> args = typedGet(map, Type.REQ_MSG.innerKey(), Map.class).orElseThrow(() -> new MessageException("expected a bencoded dictionary under key " + Type.REQ_MSG.innerKey(), ErrorCode.ProtocolError));
-		
+		Map<String, Object> args = null;
+		try {
+			args = typedGet(map, Type.REQ_MSG.innerKey(), Map.class).orElseThrow(() -> new MessageException("expected a bencoded dictionary under key " + Type.REQ_MSG.innerKey(), ErrorCode.ProtocolError));
+		} catch (Throwable e) {
+			throw (MessageException) e;
+		}
+
 		if (rawRequestMethod == null || args == null)
 			return null;
 
-		byte[] mtid = Functional.typedGet(map, MessageBase.TRANSACTION_KEY, byte[].class).filter(tid -> tid.length > 0).orElseThrow(() -> new MessageException("missing or zero-length transaction ID in request", ErrorCode.ProtocolError));
-		byte[] hash = Functional.typedGet(args,"id", byte[].class).filter(id -> id.length == Key.SHA1_HASH_LENGTH).orElseThrow(() -> new MessageException("missing or invalid node ID", ErrorCode.ProtocolError));
-		
+		byte[] mtid;
+		byte[] hash;
+		try {
+			mtid = Functional.typedGet(map, MessageBase.TRANSACTION_KEY, byte[].class).filter(tid -> tid.length > 0).orElseThrow(() -> new MessageException("missing or zero-length transaction ID in request", ErrorCode.ProtocolError));
+			hash = Functional.typedGet(args,"id", byte[].class).filter(id -> id.length == Key.SHA1_HASH_LENGTH).orElseThrow(() -> new MessageException("missing or invalid node ID", ErrorCode.ProtocolError));
+		} catch (Throwable e) {
+			throw (MessageException) e;
+		}
+
 		Key id = new Key(hash);
 
 		MessageBase msg = null;
@@ -350,13 +365,17 @@ public class MessageDecoder {
 			case GET:
 			case SAMPLE_INFOHASHES:
 			case UNKNOWN:
-				
-				hash = Stream.of(args.get("target"), args.get("info_hash")).filter(byte[].class::isInstance).findFirst().map(byte[].class::cast).orElseThrow(() -> {
-					if(method == Method.UNKNOWN)
-						return new MessageException("Received unknown Message Type: " + requestMethod,ErrorCode.MethodUnknown);
-					return new MessageException("missing/invalid target key in request",ErrorCode.ProtocolError);
-				});
-				
+
+				try {
+					hash = Stream.of(args.get("target"), args.get("info_hash")).filter(byte[].class::isInstance).findFirst().map(byte[].class::cast).orElseThrow(() -> {
+                        if(method == Method.UNKNOWN)
+                            return new MessageException("Received unknown Message Type: " + requestMethod,ErrorCode.MethodUnknown);
+                        return new MessageException("missing/invalid target key in request",ErrorCode.ProtocolError);
+                    });
+				} catch (Throwable e) {
+					throw (MessageException) e;
+				}
+
 				if (hash.length != Key.SHA1_HASH_LENGTH) {
 					throw new MessageException("invalid target key in request",ErrorCode.ProtocolError);
 				}
@@ -416,18 +435,23 @@ public class MessageDecoder {
 				Tokenizer t = new Tokenizer();
 				m.tokenizer(t);
 				ByteBuffer rawVal = m.match(raw);
-				
-				msg = tapThrow(new PutRequest(), put -> {
-					if(rawVal != null)
-						put.setValue(rawVal);
-					put.pubkey = Functional.typedGet(args, "k", byte[].class).orElse(null);
-					put.sequenceNumber = Functional.typedGet(args, "seq", Long.class).orElse(-1L);
-					put.expectedSequenceNumber = Functional.typedGet(args, "cas", Long.class).orElse(-1L);
-					put.salt = Functional.typedGet(args, "salt", byte[].class).filter(b -> b.length > 0).orElse(null);
-					put.signature = Functional.typedGet(args, "sig", byte[].class).orElse(null);
-					put.token = Functional.typedGet(args, "token", byte[].class).filter(b -> b.length > 0).orElseThrow(() -> new MessageException("missing or invalid token in PUT request"));
-					put.validate();
-				});
+
+				Map<String, Object> finalArgs1 = args;
+				try {
+					msg = tapThrow(new PutRequest(), put -> {
+                        if(rawVal != null)
+                            put.setValue(rawVal);
+                        put.pubkey = Functional.typedGet(finalArgs1, "k", byte[].class).orElse(null);
+                        put.sequenceNumber = Functional.typedGet(finalArgs1, "seq", Long.class).orElse(-1L);
+                        put.expectedSequenceNumber = Functional.typedGet(finalArgs1, "cas", Long.class).orElse(-1L);
+                        put.salt = Functional.typedGet(finalArgs1, "salt", byte[].class).filter(b -> b.length > 0).orElse(null);
+                        put.signature = Functional.typedGet(finalArgs1, "sig", byte[].class).orElse(null);
+                        put.token = Functional.typedGet(finalArgs1, "token", byte[].class).filter(b -> b.length > 0).orElseThrow(() -> new MessageException("missing or invalid token in PUT request"));
+                        put.validate();
+                    });
+				} catch (Throwable e) {
+					throw (MessageException) e;
+				}
 				break;
 			case ANNOUNCE_PEER:
 				
@@ -443,9 +467,10 @@ public class MessageDecoder {
 
 				Key infoHash = new Key(hash);
 
+				Map<String, Object> finalArgs = args;
 				msg = tap(new AnnounceRequest(infoHash, port, token), ar -> {
 					ar.setSeed(isSeed);
-					typedGet(args, "name", byte[].class).ifPresent(b -> ar.setName(ByteBuffer.wrap(b)));
+					typedGet(finalArgs, "name", byte[].class).ifPresent(b -> ar.setName(ByteBuffer.wrap(b)));
 				});
 
 				break;
